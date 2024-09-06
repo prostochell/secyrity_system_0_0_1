@@ -11,6 +11,7 @@
 #define PIR_SENSOR_PIN GPIO_NUM_14
 #define BLUE_LED_PIN   GPIO_NUM_20
 #define RED_LED_PIN    GPIO_NUM_21
+#define BUZZER_PIN     GPIO_NUM_10
 #define KEYPAD_ROW_1   GPIO_NUM_12
 #define KEYPAD_ROW_2   GPIO_NUM_11
 #define KEYPAD_ROW_3   GPIO_NUM_7
@@ -105,16 +106,23 @@ void oled_update_display() {
 
     switch (current_mode) {
         case MODE_IDLE:
-            ssd1306_display_text(&dev, 0, "Idle Mode", 9, false);  // Use 9 as the length of "Idle Mode"
-            ssd1306_display_text(&dev, 1, "Press 9 to Protect", 18, false);  // Text fits within one page
+            ssd1306_display_text(&dev, 0, "Idle Mode", 9, false);
+            ssd1306_display_text(&dev, 1, "Press 9 to Protect", 18, false);
             break;
         case MODE_SET_PASSWORD:
             ssd1306_display_text(&dev, 0, "Set Password", 12, false);
-            ssd1306_display_text(&dev, 1, input_password, strlen(input_password), false);
+            // Show the password as asterisks
+            char asterisk_password[5];
+            memset(asterisk_password, '*', input_index);  // Fill with asterisks up to the number of input characters
+            asterisk_password[input_index] = '\0';  // Null-terminate the string
+            ssd1306_display_text(&dev, 1, asterisk_password, strlen(asterisk_password), false);
             break;
         case MODE_RESET_PASSWORD:
             ssd1306_display_text(&dev, 0, "Reset Password", 13, false);
-            ssd1306_display_text(&dev, 1, input_password, strlen(input_password), false);
+            // Show the password as asterisks
+            memset(asterisk_password, '*', input_index);
+            asterisk_password[input_index] = '\0';
+            ssd1306_display_text(&dev, 1, asterisk_password, strlen(asterisk_password), false);
             break;
         case MODE_PROTECTION_ON:
             ssd1306_display_text(&dev, 0, "Protection ON", 13, false);
@@ -124,9 +132,8 @@ void oled_update_display() {
             ssd1306_display_text(&dev, 0, "Unlocking...", 11, false);
             break;
     }
-
-    // No need to call display refresh explicitly; it happens after drawing text
 }
+
 
 void display_logo() {
     ssd1306_clear_screen(&dev, false);
@@ -245,24 +252,34 @@ void read_password_from_eeprom() {
     }
 }
 
-// Function to handle PIR sensor and LED control
+// Function to handle PIR sensor and LED&Buzz control
 void pir_task(void *pvParameter) {
     gpio_set_direction(PIR_SENSOR_PIN, GPIO_MODE_INPUT);
     gpio_set_direction(BLUE_LED_PIN, GPIO_MODE_OUTPUT);
     gpio_set_direction(RED_LED_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction(BUZZER_PIN, GPIO_MODE_OUTPUT);  
 
     while (1) {
         int pir_state = gpio_get_level(PIR_SENSOR_PIN);
 
-        if (pir_state == 1 && is_protected) {  // Motion detected and protection ON
+        if (pir_state == 1 && is_protected) { 
             motion_detected = true;
             current_mode = MODE_UNLOCK;
             oled_update_display();
 
-            gpio_set_level(BLUE_LED_PIN, 1);
-            gpio_set_level(RED_LED_PIN, 1);
+           
+            int blink_count = 0;
+            while (blink_count < 80) {  
+                gpio_set_level(BLUE_LED_PIN, blink_count % 2);
+                gpio_set_level(RED_LED_PIN, blink_count % 2);
+                gpio_set_level(BUZZER_PIN, 1); 
 
-            vTaskDelay(pdMS_TO_TICKS(40000));
+                vTaskDelay(pdMS_TO_TICKS(LED_BLINK_DELAY / 2));
+                gpio_set_level(BUZZER_PIN, 0); 
+
+                vTaskDelay(pdMS_TO_TICKS(LED_BLINK_DELAY / 2)); 
+                blink_count++;
+            }
 
             if (is_protected) {
                 current_mode = MODE_IDLE;
