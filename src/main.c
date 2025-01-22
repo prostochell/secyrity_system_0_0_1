@@ -22,11 +22,11 @@
 
 #define LED_BLINK_DELAY 500
 
-#define I2C_SDA_PIN GPIO_NUM_6
-#define I2C_SCL_PIN GPIO_NUM_7
+#define I2C_SDA_PIN GPIO_NUM_8
+#define I2C_SCL_PIN GPIO_NUM_9
 
 #define EEPROM_NAMESPACE "storage"
-#define EEPROM_KEY "password"
+#define EEPROM_KEY "1234"
 
 #define CONFIG_OFFSETX 0  // Set this value depending on your display's requirements
 
@@ -75,6 +75,7 @@ uint8_t relab_logo[] = {
 // Modes and states
 typedef enum {
     MODE_IDLE,
+    MODE_CHECK_OLD_PASSWORD,
     MODE_SET_PASSWORD,
     MODE_RESET_PASSWORD,
     MODE_PROTECTION_ON,
@@ -107,6 +108,15 @@ void oled_update_display() {
             ssd1306_display_text(&dev, 0, "Idle Mode", 9, false);
             ssd1306_display_text(&dev, 1, "Press 9 to Protect", 18, false);
             break;
+        
+        case MODE_CHECK_OLD_PASSWORD: {
+            ssd1306_display_text(&dev, 0, "Enter old pass:", 15, false);
+            char asterisk_password[5];
+            memset(asterisk_password, '*', input_index);
+            asterisk_password[input_index] = '\0';
+            ssd1306_display_text(&dev, 1, asterisk_password, strlen(asterisk_password), false);
+            }
+    
         case MODE_SET_PASSWORD:
             ssd1306_display_text(&dev, 0, "Set Password", 12, false);
             // Show the password as asterisks
@@ -138,11 +148,10 @@ void display_logo() {
     // Display the logo starting from page 0, segment 0
     int k=128;
     for(int i=0; i<4; i++){
-        
         ssd1306_display_image(&dev, i, 0, relab_logo, k);  // Assuming logo width is 128 pixels
-    k+=128;
+        k+=128;
     }
-    vTaskDelay(pdMS_TO_TICKS(15000));  // Show for 5 seconds
+    vTaskDelay(pdMS_TO_TICKS(5000));  // Show for 5 seconds
     ssd1306_clear_screen(&dev, false);
 }
 
@@ -173,6 +182,31 @@ char scan_keypad() {
 }
 
 
+// Function to check old password
+void handle_old_paasword_input(char key) {
+
+    if(index<4){
+        input_password[input_index++]= key;
+    }
+
+    if (input_index == 4) {
+        
+        input_password[4] = '\0';  // Null-terminate the password
+
+        if(strcmp(input_password, stored_password) == 0) {
+        
+            current_mode = MODE_SET_PASSWORD;  
+        } else {
+
+            printf("Incorrect old password!\n");
+            current_mode = MODE_IDLE;
+        }
+        input_index = 0;
+    }
+    oled_update_display();
+
+}
+
 // Function to handle password input
 void handle_password_input(char key) {
     if (input_index < 4) {
@@ -199,8 +233,10 @@ void handle_password_setting(char key) {
     if (input_index == 4) {
         input_password[4] = '\0';  // Null-terminate the new password
         strcpy(stored_password, input_password);
+        save_password_to_eeprom(stored_password);
         input_index = 0;
         current_mode = MODE_IDLE;
+        printf("New password set: %s\n", stored_password);
     }
     oled_update_display();
 }
@@ -299,7 +335,22 @@ void pir_task(void *pvParameter) {
 }
 
 // Function to handle keypad input and mode switching
+
 void keypad_task(void *pvParameter) {
+
+    // Configure keypad GPIOs
+    gpio_set_direction(KEYPAD_ROW_1, GPIO_MODE_OUTPUT);
+    gpio_set_direction(KEYPAD_ROW_2, GPIO_MODE_OUTPUT);
+    gpio_set_direction(KEYPAD_ROW_3, GPIO_MODE_OUTPUT);
+    gpio_set_direction(KEYPAD_COL_1, GPIO_MODE_INPUT);
+    gpio_set_direction(KEYPAD_COL_2, GPIO_MODE_INPUT);
+    gpio_set_direction(KEYPAD_COL_3, GPIO_MODE_INPUT);
+    gpio_set_direction(KEYPAD_COL_4, GPIO_MODE_INPUT);
+
+    gpio_set_level(KEYPAD_ROW_1, 1);
+    gpio_set_level(KEYPAD_ROW_2, 1);
+    gpio_set_level(KEYPAD_ROW_3, 1);
+
     while (1) {
         char key = scan_keypad();
 
@@ -314,18 +365,20 @@ void keypad_task(void *pvParameter) {
                     is_protected = false;
                     break;
                 case '*':  // Set password mode
-                    current_mode = MODE_SET_PASSWORD;
+                    current_mode = MODE_CHECK_OLD_PASSWORD;
                     input_index = 0;
                     break;
                 case '#':  // Reset password mode
-                    current_mode = MODE_RESET_PASSWORD;
+                    current_mode = MODE_CHECK_OLD_PASSWORD;
                     input_index = 0;
                     break;
                 default:
-                    if (current_mode == MODE_PROTECTION_ON && motion_detected) {
-                        handle_password_input(key);
+                    if (current_mode == MODE_CHECK_OLD_PASSWORD) {
+                        handle_old_password_input(key);
                     } else if (current_mode == MODE_SET_PASSWORD || current_mode == MODE_RESET_PASSWORD) {
                         handle_password_setting(key);
+                    } else if (current_mode == MODE_PROTECTION_ON && motion_detected) {
+                        handle_password_input(key);
                     }
                     break;
             }
@@ -340,7 +393,6 @@ void app_main() {
     // Initialize NVS
     init_nvs();
 
-
     // Configure OLED
     oled_init();    
     // Display the logo on startup
@@ -348,25 +400,7 @@ void app_main() {
 
     oled_update_display();
 
-
-
-
     read_password_from_eeprom();
-
-
-
-    // Configure keypad GPIOs
-    gpio_set_direction(KEYPAD_ROW_1, GPIO_MODE_OUTPUT);
-    gpio_set_direction(KEYPAD_ROW_2, GPIO_MODE_OUTPUT);
-    gpio_set_direction(KEYPAD_ROW_3, GPIO_MODE_OUTPUT);
-    gpio_set_direction(KEYPAD_COL_1, GPIO_MODE_INPUT);
-    gpio_set_direction(KEYPAD_COL_2, GPIO_MODE_INPUT);
-    gpio_set_direction(KEYPAD_COL_3, GPIO_MODE_INPUT);
-    gpio_set_direction(KEYPAD_COL_4, GPIO_MODE_INPUT);
-
-    gpio_set_level(KEYPAD_ROW_1, 1);
-    gpio_set_level(KEYPAD_ROW_2, 1);
-    gpio_set_level(KEYPAD_ROW_3, 1);
 
     // Create the PIR sensor and keypad tasks
     xTaskCreate(pir_task, "pir_task", 2048, NULL, 5, NULL);
