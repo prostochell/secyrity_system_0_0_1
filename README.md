@@ -79,16 +79,14 @@ The board was designed in Altium Designer. It features two layers and has dimens
 ![PCB Design](https://raw.githubusercontent.com/prostochell/secyrity_system_0_0_1/main/img/pcb_design.png)
 _PCB Layout_
 
-![3D PCB Model](https://raw.githubusercontent.com/prostochell/secyrity_system_0_0_1/main/img/pcb_3d.png)
-_3D Render of the PCB_
 
 ## 📸 Gallery
 
 The manufactured PCB and the final assembled device.
 
-![Manufactured PCB](https://raw.githubusercontent.com/prostochell/secyrity_system_0_0_1/main/img/board_manufactured.jpg)
+![Manufactured PCB](https://raw.githubusercontent.com/prostochell/secyrity_system_0_0_1/main/img/board_manufactured.png)
 _Manufactured PCB (before soldering)_
 
-![Assembled Board](https://raw.githubusercontent.com/prostochell/secyrity_system_0_0_1/main/img/board_assembled.jpg)
+![Assembled Board](https://raw.githubusercontent.com/prostochell/secyrity_system_0_0_1/main/img/board_assembled.png)
 _Assembled Device_
 
